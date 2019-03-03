@@ -1,0 +1,132 @@
+---
+title: "US Stock Market data"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this page, we make dataset of US stock market using quantmod library and NASDAQ site.
+
+Special thanks to following refernece.
+https://github.com/hyunyulhenry/HenryQuant/blob/master/R/get_US_ticker.R
+
+
+## Initial settings
+```{r initalset}
+rm(list=ls())
+options(warn = -1) # suppressing warning message
+options(install.packages.check.source = "no")
+
+# Load multiple required packages at once
+packages = c('quantmod')
+suppressMessages(lapply(packages, require, character.only = T, quietly = TRUE)) 
+## Character.only = T means elements in 'packages' can be assumed to be character stirngs.
+```
+
+
+First, we need to get symbols of all listed issues in US stock market from NASDAQ site.
+(NYSE, NASDAQ, AMEX market)
+
+we need to make function for downloading Symbol, name, sector and end prices of all listed issues. 
+
+## Make 'get_US_symbol' function
+```{r getsymbol function}
+# This code is came from 'HenryQuant github'
+
+get_US_symbol = function() {
+  
+  ## Following urls lead us to download each stock market's data
+  url_NYSE = "http://www.nasdaq.com/screening/companies-by-name.aspx?letter=0&exchange=nyse&render=download"
+  url_NASDAQ = "http://www.nasdaq.com/screening/companies-by-name.aspx?letter=0&exchange=nasdaq&render=download"
+  url_AMEX = "http://www.nasdaq.com/screening/companies-by-name.aspx?letter=0&exchange=amexe&render=download"
+  
+  ## Download each file as csv type
+  download.file(url_NYSE, destfile = "./url_NYSE.csv")
+  download.file(url_NASDAQ, destfile = "./url_NASDAQ.csv")
+  download.file(url_AMEX, destfile = "./url_AMEX.csv")
+  
+  ## Load each file
+  NYSE = read.csv("./url_NYSE.csv", stringsAsFactors = F) ## 'stringsAsFactors = F' prevents columns with strings from being converted to factors
+  NASDAQ = read.csv("./url_NASDAQ.csv", stringsAsFactors = F)
+  AMEX = read.csv("./url_AMEX.csv", stringsAsFactors = F)
+  
+  
+  ## Combine listed issues from three markets at one file
+  us_symbol = rbind(NYSE, NASDAQ, AMEX)
+
+  ## Data cleansing process
+  us_symbol = us_symbol[us_symbol$MarketCap != "n/a", ]
+  us_symbol = us_symbol[us_symbol$Sector != "n/a", ] 
+  us_symbol = us_symbol[!duplicated(us_symbol$Name), ] # delete duplicated rows with respect to 'Name' 
+  
+  # Remove rownames of 'us_symbol'
+  rownames(us_symbol) = NULL
+  
+  # Remove empty space in 'Symbol' using 'gsub(global substitute)' function
+  us_symbol$Symbol = gsub(" ", "", us_symbol$Symbol)
+  ## gsub function replaces "  " to "" in Symbol column
+  
+  # Remove 'IPO year' column
+  us_symbol = us_symbol[, -c(5,8,9)]
+
+  ## Saving results in csv file
+  write.csv(us_symbol, "us_symbol.csv")
+  
+  
+  ## Remove files
+  file.remove("./url_NYSE.csv")
+  file.remove("./url_NASDAQ.csv")
+  file.remove("./url_AMEX.csv")
+  
+}
+```
+
+## Implements 'get_US_symbol' function and load csv file
+```{r implement}
+
+get_US_symbol()
+
+us_stock = read.csv("us_symbol.csv", row.names = 1, stringsAsFactors = F)
+
+# Show first 5 data
+head(us_stock)
+```
+
+Now, using 'quantmod' library we make dataset containing financial indexes for each  stock.
+
+## Use 'quantmod' package
+```{r quntmod}
+# Set various interested financial indexs in'indexes' vector with 'yahooQF' function
+indexes = yahooQF(c("Price/Book", "P/E Ratio", "Price/EPS Estimate Next Year",
+                             "Earning/Share", "Dividend Yield", 
+                    "Market Capitalization", "Shares Outstanding", "Book Value",
+                    "Earnings End Time", "Earnings Start Time"))
+## We can see which indexes can be downloaded from 'getQuote' function through run yahooQF()
+
+# Concatenate all symbols from us_stock data column 1 
+codes = paste(us_stock[, 1], sep = "", collapse = ";") 
+
+# Using 'getQuote' function to download financial indexes. 'indexes' and 'codes' are uese as arguments. 
+Financial_indexes = getQuote(codes, what = indexes)
+
+# Show first 5 results
+head(Financial_indexes)
+
+# Merge 'financial_indexes' with exisiting 'us_stock' dataset
+us_stock = cbind(us_stock[, -4], Financial_indexes[, -1])
+
+
+# Show first 5 results
+head(us_stock)
+```
+
+## Save results
+```{r save}
+# Saving result as csv file
+write.csv(us_stock, "us_stock.csv")
+```
+
+
+
